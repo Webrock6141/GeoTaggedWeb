@@ -51,6 +51,43 @@ function encodeUserComment(value: string): string {
   return "ASCII\0\0\0" + value
 }
 
+function decodeBytesToString(value: unknown): string | null {
+  if (typeof value === "string") return value
+
+  const tryDecode = (encoding: string, bytes: Uint8Array) => {
+    try {
+      const decoded = new TextDecoder(encoding, { fatal: false }).decode(bytes)
+      const cleaned = decoded.replace(/\u0000.*$/, "").trim()
+      return cleaned || null
+    } catch {
+      return null
+    }
+  }
+
+  if (value instanceof Uint8Array) {
+    const bytes = value
+    for (const encoding of ["utf-8", "utf-16le", "utf-16be", "latin1"]) {
+      const decoded = tryDecode(encoding, bytes)
+      if (decoded) return decoded
+    }
+    return null
+  }
+
+  if (Array.isArray(value)) {
+    const first = value[0]
+    if (typeof first === "number") {
+      const bytes = Uint8Array.from(value as number[])
+      for (const encoding of ["utf-8", "utf-16le", "utf-16be", "latin1"]) {
+        const decoded = tryDecode(encoding, bytes)
+        if (decoded) return decoded
+      }
+      return null
+    }
+  }
+
+  return null
+}
+
 /**
  * Read a File into a base64 data URL.
  */
@@ -132,6 +169,76 @@ export function buildDownloadFilename(filename: string, format: string) {
 export interface ExistingGeo {
   latitude: number
   longitude: number
+}
+
+export function readExifMetadata(jpegDataURL: string): Partial<GeoMetadata> {
+  try {
+    const exif = piexif.load(jpegDataURL)
+    const zeroth = exif["0th"] as Record<number, unknown>
+    const exifIfd = exif.Exif as Record<number, unknown>
+    const gps = exif.GPS as Record<number, unknown>
+
+    const metadata: Partial<GeoMetadata> = {}
+
+    const rawTitle = zeroth[piexif.ImageIFD.DocumentName]
+    const rawXPTitle = zeroth[piexif.ImageIFD.XPTitle]
+    const rawSubject = zeroth[piexif.ImageIFD.XPSubject]
+    const rawDescription = zeroth[piexif.ImageIFD.ImageDescription]
+    const rawAuthor = zeroth[piexif.ImageIFD.Artist]
+    const rawXPAuthor = zeroth[piexif.ImageIFD.XPAuthor]
+    const rawWebsiteName = zeroth[piexif.ImageIFD.Copyright]
+    const rawKeywords = zeroth[piexif.ImageIFD.XPKeywords]
+    const rawWebsite = zeroth[piexif.ImageIFD.XPComment]
+    const userComment = exifIfd[piexif.ExifIFD.UserComment]
+
+    const title =
+      decodeBytesToString(rawTitle) ||
+      (Array.isArray(rawXPTitle) ? decodeXPString(rawXPTitle) : "")
+    const subject =
+      (Array.isArray(rawSubject) ? decodeXPString(rawSubject) : "") ||
+      decodeBytesToString(rawSubject)
+    const description = decodeBytesToString(rawDescription)
+    const author =
+      decodeBytesToString(rawAuthor) ||
+      (Array.isArray(rawXPAuthor) ? decodeXPString(rawXPAuthor) : "")
+    const websiteName = decodeBytesToString(rawWebsiteName)
+    const keywords =
+      (Array.isArray(rawKeywords) ? decodeXPString(rawKeywords) : "") ||
+      decodeBytesToString(rawKeywords)
+    const website =
+      ((Array.isArray(rawWebsite) ? decodeXPString(rawWebsite) : "") ||
+        decodeBytesToString(rawWebsite) ||
+        decodeBytesToString(userComment)?.replace(/^ASCII\x00\x00\x00/, "")) ||
+      ""
+
+    if (title?.trim()) metadata.title = title
+    if (subject?.trim()) metadata.subject = subject
+    if (description?.trim()) metadata.description = description
+    if (author?.trim()) metadata.author = author
+    if (websiteName?.trim()) metadata.websiteName = websiteName
+    if (keywords?.trim()) metadata.keywords = keywords
+    if (website?.trim()) metadata.website = website
+
+    const lat = gps[piexif.GPSIFD.GPSLatitude] as [number, number][] | undefined
+    const latRef = gps[piexif.GPSIFD.GPSLatitudeRef] as string | undefined
+    const lon = gps[piexif.GPSIFD.GPSLongitude] as [number, number][] | undefined
+    const lonRef = gps[piexif.GPSIFD.GPSLongitudeRef] as string | undefined
+
+    if (lat && lon && latRef && lonRef) {
+      const latitude = piexif.GPSHelper.dmsRationalToDeg(lat, latRef)
+      const longitude = piexif.GPSHelper.dmsRationalToDeg(lon, lonRef)
+      if (!Number.isNaN(latitude) && !Number.isNaN(longitude)) {
+        metadata.latitude = String(latitude)
+        metadata.longitude = String(longitude)
+        metadata.latRef = latRef === "S" ? "S" : "N"
+        metadata.lonRef = lonRef === "W" ? "W" : "E"
+      }
+    }
+
+    return metadata
+  } catch {
+    return {}
+  }
 }
 
 /**

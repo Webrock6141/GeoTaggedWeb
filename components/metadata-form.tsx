@@ -56,6 +56,7 @@ export function MetadataForm({ meta, onChange }: MetadataFormProps) {
           placeholder="Image title (EXIF DocumentName)"
           value={meta.title}
           onChange={(e) => onChange({ title: e.target.value })}
+           required
         />
       </div>
 
@@ -66,6 +67,7 @@ export function MetadataForm({ meta, onChange }: MetadataFormProps) {
           placeholder="Subject of the image (EXIF XPSubject)"
           value={meta.subject}
           onChange={(e) => onChange({ subject: e.target.value })}
+           required
         />
       </div>
 
@@ -78,6 +80,7 @@ export function MetadataForm({ meta, onChange }: MetadataFormProps) {
             placeholder="25.28109370886218"
             value={meta.latitude}
             onChange={(e) => onChange({ latitude: e.target.value })}
+             required
           />
           <Toggle
             label="Latitude direction"
@@ -97,6 +100,7 @@ export function MetadataForm({ meta, onChange }: MetadataFormProps) {
             placeholder="55.39210784750408"
             value={meta.longitude}
             onChange={(e) => onChange({ longitude: e.target.value })}
+            required
           />
           <Toggle
             label="Longitude direction"
@@ -136,6 +140,7 @@ export function MetadataForm({ meta, onChange }: MetadataFormProps) {
           placeholder="geotag, photography, travel, exprintmart"
           value={meta.keywords}
           onChange={(e) => onChange({ keywords: e.target.value.slice(0, MAX_KEYWORDS) })}
+           required
         />
         <p className="text-xs text-muted-foreground">Comma-separated (EXIF XPKeywords)</p>
       </div>
@@ -152,6 +157,7 @@ export function MetadataForm({ meta, onChange }: MetadataFormProps) {
             )}
           >
             {meta.description.length}/{MAX_DESCRIPTION}
+            
           </span>
         </div>
         <Textarea
@@ -162,6 +168,7 @@ export function MetadataForm({ meta, onChange }: MetadataFormProps) {
           onChange={(e) =>
             onChange({ description: e.target.value.slice(0, MAX_DESCRIPTION) })
           }
+          required
         />
       </div>
 
@@ -176,7 +183,7 @@ export function MetadataForm({ meta, onChange }: MetadataFormProps) {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="websiteName">Website Name</Label>
+        <Label htmlFor="websiteName">Copyright</Label>
         <Input
           id="websiteName"
           placeholder="Exprintmart"

@@ -19,8 +19,6 @@ import {
   readExistingGeo,
   writeExif,
   downloadDataURL,
-  convertDataURLToFormat,
-  buildDownloadFilename,
   type GeoMetadata,
 } from "@/lib/exif"
 
@@ -38,7 +36,6 @@ export interface ImageItem {
 export interface DownloadHistoryItem {
   id: string
   fileName: string
-  format: string
   timestamp: string
 }
 
@@ -54,7 +51,6 @@ const EMPTY_META: GeoMetadata = {
   description: "",
   author: "",
   websiteName: "Exprintmart",
-  downloadFormat: "jpg",
 }
 
 const ACCEPTED = ["image/jpeg", "image/png", "image/webp"]
@@ -105,6 +101,7 @@ export function GeoTagTool() {
     setImages((prev) => [...prev, ...items])
     setStatus(null)
 
+    // Pre-fill coordinates from the first image that already has a geotag.
     if (prefill) {
       const geo = prefill as { latitude: number; longitude: number }
       setMeta((prev) => {
@@ -147,12 +144,6 @@ export function GeoTagTool() {
       setStatus("Upload at least one image first.")
       return
     }
-
-    const selectedFormat = (meta.downloadFormat || "jpg") as
-      | "jpg"
-      | "png"
-      | "webp"
-
     setProcessing(true)
     setStatus(null)
     try {
@@ -160,16 +151,14 @@ export function GeoTagTool() {
       for (const img of images) {
         const jpegSource = img.isJpeg ? img.dataURL : await toJpegDataURL(img.dataURL)
         const tagged = writeExif(jpegSource, meta)
-        const converted = await convertDataURLToFormat(tagged, selectedFormat)
-        const outputName = buildDownloadFilename(img.name, selectedFormat)
-
-        downloadDataURL(converted, outputName)
+        const baseName = img.name.replace(/\.[^.]+$/, "")
+        const outputName = `${baseName}.webp`
+        downloadDataURL(tagged, outputName)
 
         setDownloadHistory((prev) => {
           const entry: DownloadHistoryItem = {
             id: `${img.id}-${Date.now()}-${count}`,
             fileName: outputName,
-            format: selectedFormat.toUpperCase(),
             timestamp: new Date().toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
@@ -179,14 +168,13 @@ export function GeoTagTool() {
         })
 
         count++
+        // Small delay so the browser registers each download separately.
         await new Promise((r) => setTimeout(r, 350))
       }
       setImages((prev) => prev.map((img) => ({ ...img, processed: true })))
-      setStatus(
-        `Done! ${count} image${count > 1 ? "s" : ""} tagged and downloaded as ${selectedFormat.toUpperCase()}.`,
-      )
+      setStatus(`Done! ${count} image${count > 1 ? "s" : ""} tagged and downloaded.`)
     } catch (err) {
-      console.log("EXIF processing error:", err)
+      console.log("[v0] EXIF processing error:", err)
       setStatus("Something went wrong while writing EXIF data. Please try again.")
     } finally {
       setProcessing(false)
@@ -196,6 +184,7 @@ export function GeoTagTool() {
   return (
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+        {/* Left: upload + thumbnails */}
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Upload Images</CardTitle>
@@ -208,6 +197,7 @@ export function GeoTagTool() {
           </CardContent>
         </Card>
 
+        {/* Right: metadata form */}
         <Card className="lg:col-span-3">
           <CardHeader>
             <CardTitle>Metadata</CardTitle>
@@ -221,6 +211,7 @@ export function GeoTagTool() {
         </Card>
       </div>
 
+      {/* Map preview */}
       <Card>
         <CardHeader>
           <CardTitle>Location Preview</CardTitle>
@@ -233,6 +224,7 @@ export function GeoTagTool() {
         </CardContent>
       </Card>
 
+      {/* Actions */}
       <div className="flex flex-col items-center gap-3">
         {status && (
           <p
@@ -295,14 +287,14 @@ export function GeoTagTool() {
             </div>
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Tags className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-              Non-JPEG images are converted to JPEG structure internally to write core EXIF tags.
+              Non-JPEG images are converted to JPEG so EXIF can be embedded.
             </p>
           </>
         ) : (
           <div className="w-full rounded-xl border border-border bg-card p-3">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-semibold">Recent Downloads</h3>
-              <span className="text-xs text-muted-foreground">Max 5</span>
+              <span className="text-xs text-muted-foreground">Last 5</span>
             </div>
             {downloadHistory.length === 0 ? (
               <p className="text-sm text-muted-foreground">No downloads yet.</p>
@@ -315,9 +307,7 @@ export function GeoTagTool() {
                   >
                     <div>
                       <p className="text-sm font-medium">{item.fileName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {item.format} • {item.timestamp}
-                      </p>
+                      <p className="text-xs text-muted-foreground">{item.timestamp}</p>
                     </div>
                     <Button
                       type="button"
